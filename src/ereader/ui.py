@@ -170,7 +170,7 @@ class ReaderUI:
             "",
             self.upload_url or "Upload server is disabled.",
             "",
-            "Choose a .txt file and upload it.",
+            "Choose a .txt or .epub file and upload it.",
             "The book will appear in the library automatically.",
         ]
         y = 156

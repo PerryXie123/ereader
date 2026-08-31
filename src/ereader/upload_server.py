@@ -57,11 +57,11 @@ class UploadServer:
                 body = self.rfile.read(length)
                 filename, content = _parse_multipart_upload(content_type, body)
                 if not filename or content is None:
-                    self._send_html(_upload_form_html("Choose a .txt file first."), status=400)
+                    self._send_html(_upload_form_html("Choose a .txt or .epub file first."), status=400)
                     return
 
-                if not filename.lower().endswith(".txt"):
-                    self._send_html(_upload_form_html("Only .txt files are supported."), status=400)
+                if Path(filename).suffix.lower() not in {".txt", ".epub"}:
+                    self._send_html(_upload_form_html("Only .txt and .epub files are supported."), status=400)
                     return
 
                 book = save_uploaded_book(upload_dir, filename, content)
@@ -128,10 +128,10 @@ def _upload_form_html(message: str = "") -> str:
 </head>
 <body>
   <h1>EReader Upload</h1>
-  <p>Upload a UTF-8 text file and it will appear in the reader library.</p>
+  <p>Upload a text or EPUB file and it will appear in the reader library.</p>
   <form action="/upload" method="post" enctype="multipart/form-data">
-    <input type="file" name="book" accept=".txt,text/plain" required>
-    <button type="submit">Upload text file</button>
+    <input type="file" name="book" accept=".txt,.epub,text/plain,application/epub+zip" required>
+    <button type="submit">Upload book</button>
   </form>
   <p class="message">{escaped_message}</p>
 </body>
