@@ -24,7 +24,8 @@ Virtual framebuffer
 
 - Fixed-size Kindle-like display target, default `758 x 1024`
 - Library and reading screens
-- Page-based navigation
+- Page-based navigation with page counts
+- Local-network text file uploads from another device
 - Grayscale, 1-bit, 2-bit, and 4-bit display modes
 - Ordered and Floyd-Steinberg dithering
 - Full-refresh flash simulation
@@ -52,6 +53,20 @@ The `--system-site-packages` flag lets the virtualenv see Raspberry Pi OS's
 python -m ereader --target simulator
 ```
 
+The app starts a local upload server by default. On the reader, press `U` or
+click `Upload` in the library to see the address. From another phone, tablet,
+or computer on the same Wi-Fi network, open that address in a browser and
+upload a `.txt` file. Uploaded books are stored in `books/` and appear in the
+library automatically.
+
+Upload options:
+
+```bash
+python -m ereader --upload-port 8080
+python -m ereader --upload-dir books
+python -m ereader --no-upload-server
+```
+
 Useful options:
 
 ```bash
@@ -67,6 +82,7 @@ python -m ereader --ghosting 0.18
 - `Right`, `Space`, `PageDown`: next page
 - `Left`, `Backspace`, `PageUp`: previous page
 - `Home`: library
+- `U`: upload screen
 - `Enter`: open selected book
 - `Up` / `Down`: select book in library
 - `1`: 1-bit mode

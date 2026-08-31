@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -46,3 +47,55 @@ SAMPLE_BOOKS = [
     ),
 ]
 
+
+def load_uploaded_books(directory: Path) -> list[Book]:
+    if not directory.exists():
+        return []
+
+    books: list[Book] = []
+    for path in sorted(directory.glob("*.txt")):
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except UnicodeDecodeError:
+            text = path.read_text(encoding="utf-8", errors="replace").strip()
+
+        if not text:
+            continue
+
+        title = _title_from_text_or_path(text, path)
+        books.append(Book(title=title, author="Uploaded text file", text=text))
+
+    return books
+
+
+def save_uploaded_book(directory: Path, filename: str, content: bytes) -> Book:
+    directory.mkdir(parents=True, exist_ok=True)
+    safe_name = _safe_txt_filename(filename)
+    path = _available_path(directory / safe_name)
+    text = content.decode("utf-8", errors="replace").strip()
+    path.write_text(text, encoding="utf-8")
+    return Book(title=_title_from_text_or_path(text, path), author="Uploaded text file", text=text)
+
+
+def _title_from_text_or_path(text: str, path: Path) -> str:
+    first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    return first_line[:80] if first_line else path.stem.replace("_", " ").replace("-", " ").title()
+
+
+def _safe_txt_filename(filename: str) -> str:
+    stem = Path(filename).stem or "uploaded-book"
+    safe = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in stem)
+    safe = "-".join(part for part in safe.split("-") if part) or "uploaded-book"
+    return f"{safe[:80]}.txt"
+
+
+def _available_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+
+    for index in range(2, 1000):
+        candidate = path.with_name(f"{path.stem}-{index}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+
+    raise FileExistsError(f"Too many uploaded books named like {path.name}")

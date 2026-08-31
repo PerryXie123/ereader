@@ -2,28 +2,53 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from threading import Event
 
 from .drivers.null import NullDisplayDriver
 from .eink_effects import DitherMode, DisplayMode, EinkEffectConfig
 from .framebuffer import DisplaySize, VirtualFramebuffer
 from .ui import ReaderUI
+from .books import SAMPLE_BOOKS, load_uploaded_books
+from .upload_server import UploadServer
 
 
 def main() -> None:
     args = _parse_args()
     size = DisplaySize(width=args.width, height=args.height)
     framebuffer = VirtualFramebuffer(size)
-    ui = ReaderUI(size)
+    upload_dir = Path(args.upload_dir)
+    upload_changed = Event()
+    books = [*SAMPLE_BOOKS, *load_uploaded_books(upload_dir)]
+    upload_server: UploadServer | None = None
 
-    if args.target == "simulator":
-        _run_simulator(args, framebuffer, ui)
-    elif args.target == "null-hardware":
-        _run_null_hardware(args, framebuffer, ui)
-    else:
-        raise ValueError(f"Unknown target: {args.target}")
+    ui = ReaderUI(size, books=books)
+    if args.upload_server:
+        upload_server = UploadServer(
+            upload_dir,
+            args.upload_port,
+            lambda book: (ui.add_book(book), upload_changed.set()),
+        )
+        upload_server.start()
+        ui.upload_url = upload_server.url
+
+    try:
+        if args.target == "simulator":
+            _run_simulator(args, framebuffer, ui, upload_changed)
+        elif args.target == "null-hardware":
+            _run_null_hardware(args, framebuffer, ui)
+        else:
+            raise ValueError(f"Unknown target: {args.target}")
+    finally:
+        if upload_server:
+            upload_server.stop()
 
 
-def _run_simulator(args: argparse.Namespace, framebuffer: VirtualFramebuffer, ui: ReaderUI) -> None:
+def _run_simulator(
+    args: argparse.Namespace,
+    framebuffer: VirtualFramebuffer,
+    ui: ReaderUI,
+    upload_changed: Event,
+) -> None:
     import pygame
 
     from .simulator import EinkSimulator, SimulatorConfig
@@ -50,6 +75,15 @@ def _run_simulator(args: argparse.Namespace, framebuffer: VirtualFramebuffer, ui
                     running = False
                 elif event.type == pygame.KEYDOWN:
                     changed, full_refresh, running = _handle_key(event.key, ui, simulator)
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    x = int(event.pos[0] / args.scale)
+                    y = int(event.pos[1] / args.scale)
+                    changed = ui.handle_click(x, y) or changed
+
+            if upload_changed.is_set():
+                upload_changed.clear()
+                changed = True
+                full_refresh = True
 
             if changed:
                 _render_to(framebuffer, ui, simulator.show, full_refresh=full_refresh)
@@ -84,6 +118,8 @@ def _handle_key(key: int, ui: ReaderUI, simulator) -> tuple[bool, bool, bool]:
         ui.previous_page()
     elif key == pygame.K_HOME:
         ui.home()
+    elif key == pygame.K_u:
+        ui.open_upload()
     elif key == pygame.K_RETURN:
         ui.open_selected()
     elif key == pygame.K_DOWN:
@@ -107,4 +143,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--ghosting", type=float, default=0.12)
     parser.add_argument("--full-refresh-flash", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--output", default="out/latest-frame.png")
+    parser.add_argument("--upload-dir", default="books")
+    parser.add_argument("--upload-port", type=int, default=8080)
+    parser.add_argument("--upload-server", action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
