@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html import unescape
+import json
 from pathlib import Path
 import re
 import zipfile
@@ -13,6 +14,13 @@ class Book:
     title: str
     author: str
     text: str
+
+
+@dataclass(frozen=True)
+class LibraryEntry:
+    filename: str
+    title: str
+    author: str
 
 
 SAMPLE_BOOKS = [
@@ -56,12 +64,19 @@ def load_uploaded_books(directory: Path) -> list[Book]:
     if not directory.exists():
         return []
 
+    metadata = _load_metadata(directory)
     books: list[Book] = []
     for path in sorted(directory.iterdir()):
         if path.suffix.lower() not in {".txt", ".epub"}:
             continue
 
-        text, title, author = _read_book_file(path)
+        try:
+            text, title, author = _read_book_file(path)
+        except (ElementTree.ParseError, KeyError, OSError, ValueError, zipfile.BadZipFile):
+            continue
+        saved = metadata.get(path.name, {})
+        title = saved.get("title", title)
+        author = saved.get("author", author)
 
         if not text:
             continue
@@ -77,7 +92,45 @@ def save_uploaded_book(directory: Path, filename: str, content: bytes) -> Book:
     path = _available_path(directory / safe_name)
     path.write_bytes(content)
     text, title, author = _read_book_file(path)
-    return Book(title=title or _title_from_text_or_path(text, path), author=author, text=text)
+    title = title or _title_from_text_or_path(text, path)
+    _save_book_metadata(directory, path.name, title, author)
+    return Book(title=title, author=author, text=text)
+
+
+def list_uploaded_entries(directory: Path) -> list[LibraryEntry]:
+    if not directory.exists():
+        return []
+
+    metadata = _load_metadata(directory)
+    entries: list[LibraryEntry] = []
+    for path in sorted(directory.iterdir()):
+        if path.suffix.lower() not in {".txt", ".epub"}:
+            continue
+
+        try:
+            text, title, author = _read_book_file(path)
+        except (ElementTree.ParseError, KeyError, OSError, ValueError, zipfile.BadZipFile):
+            title = path.stem.replace("_", " ").replace("-", " ").title()
+            author = "Unknown author"
+
+        saved = metadata.get(path.name, {})
+        entries.append(
+            LibraryEntry(
+                filename=path.name,
+                title=saved.get("title", title),
+                author=saved.get("author", author),
+            )
+        )
+
+    return entries
+
+
+def update_book_metadata(directory: Path, filename: str, title: str, author: str) -> None:
+    path = directory / Path(filename).name
+    if path.suffix.lower() not in {".txt", ".epub"} or not path.exists():
+        raise FileNotFoundError(filename)
+
+    _save_book_metadata(directory, path.name, title.strip() or path.stem, author.strip() or "Unknown author")
 
 
 def _read_book_file(path: Path) -> tuple[str, str, str]:
@@ -117,6 +170,42 @@ def _available_path(path: Path) -> Path:
             return candidate
 
     raise FileExistsError(f"Too many uploaded books named like {path.name}")
+
+
+def _metadata_path(directory: Path) -> Path:
+    return directory / "library.json"
+
+
+def _load_metadata(directory: Path) -> dict[str, dict[str, str]]:
+    path = _metadata_path(directory)
+    if not path.exists():
+        return {}
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    metadata: dict[str, dict[str, str]] = {}
+    for filename, values in data.items():
+        if isinstance(filename, str) and isinstance(values, dict):
+            title = values.get("title")
+            author = values.get("author")
+            metadata[filename] = {
+                "title": title if isinstance(title, str) else "",
+                "author": author if isinstance(author, str) else "",
+            }
+    return metadata
+
+
+def _save_book_metadata(directory: Path, filename: str, title: str, author: str) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    metadata = _load_metadata(directory)
+    metadata[filename] = {"title": title.strip(), "author": author.strip()}
+    _metadata_path(directory).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def _read_epub(path: Path) -> tuple[str, str, str]:

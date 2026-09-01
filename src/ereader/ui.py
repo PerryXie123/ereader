@@ -34,6 +34,7 @@ class ReaderUI:
         self.upload_status = ""
         self._lock = RLock()
         self._font_regular = _load_font(24)
+        self._font_bold = _load_font(24, bold=True)
         self._font_small = _load_font(18)
         self._font_title = _load_font(34)
         self._font_mono = _load_font(16)
@@ -95,6 +96,15 @@ class ReaderUI:
             self.state.selected_book = len(self.books) - 1
             self.upload_status = f"Uploaded: {book.title}"
 
+    def set_books(self, books: list[Book], status: str = "") -> None:
+        with self._lock:
+            self.books = books
+            self.state.selected_book = min(self.state.selected_book, max(0, len(self.books) - 1))
+            self.state.active_book = min(self.state.active_book, max(0, len(self.books) - 1))
+            self.state.page = 0
+            if status:
+                self.upload_status = status
+
     def handle_click(self, x: int, y: int) -> bool:
         with self._lock:
             if self.state.screen == Screen.LIBRARY and _inside((x, y), self._upload_button_rect()):
@@ -104,31 +114,40 @@ class ReaderUI:
 
     def _render_library(self, draw: ImageDraw.ImageDraw) -> None:
         margin = 54
+        row_height = 92
+        list_top = 148
+        list_bottom = self.size.height - 118
+        rows_per_page = max(1, (list_bottom - list_top) // row_height)
+        first_book = (self.state.selected_book // rows_per_page) * rows_per_page
+        visible_books = self.books[first_book : first_book + rows_per_page]
+
         draw.text((margin, 52), "Library", fill=16, font=self._font_title)
         self._render_upload_button(draw)
         draw.line((margin, 106, self.size.width - margin, 106), fill=70, width=2)
 
-        y = 148
-        for index, book in enumerate(self.books):
+        y = list_top
+        for offset, book in enumerate(visible_books):
+            index = first_book + offset
             selected = index == self.state.selected_book
-            if selected:
-                draw.rounded_rectangle(
-                    (margin - 14, y - 16, self.size.width - margin + 14, y + 86),
-                    radius=6,
-                    fill=24,
-                )
-                title_fill = 245
-                meta_fill = 205
-            else:
-                title_fill = 28
-                meta_fill = 92
+            title_font = self._font_bold if selected else self._font_regular
+            title_fill = 8 if selected else 34
+            meta_fill = 72 if selected else 105
 
-            draw.text((margin, y), book.title, fill=title_fill, font=self._font_regular)
-            draw.text((margin, y + 36), book.author, fill=meta_fill, font=self._font_small)
-            y += 126
+            draw.text((margin, y), book.title, fill=title_fill, font=title_font)
+            draw.text((margin, y + 34), book.author, fill=meta_fill, font=self._font_small)
+            y += row_height
 
         footer = "Enter opens  |  arrows select  |  U uploads  |  Home returns"
         draw.text((margin, self.size.height - 58), footer, fill=90, font=self._font_mono)
+        if len(self.books) > rows_per_page:
+            page = first_book // rows_per_page + 1
+            total_pages = (len(self.books) + rows_per_page - 1) // rows_per_page
+            draw.text(
+                (self.size.width - margin - 120, self.size.height - 88),
+                f"{page}/{total_pages}",
+                fill=90,
+                font=self._font_mono,
+            )
         if self.upload_status:
             draw.text((margin, self.size.height - 88), self.upload_status[:64], fill=55, font=self._font_mono)
 
@@ -206,12 +225,12 @@ class ReaderUI:
         return pages or [[]]
 
 
-def _load_font(size: int) -> ImageFont.ImageFont:
+def _load_font(size: int, *, bold: bool = False) -> ImageFont.ImageFont:
     candidates = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "C:/Windows/Fonts/georgia.ttf",
-        "C:/Windows/Fonts/arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "C:/Windows/Fonts/georgiab.ttf" if bold else "C:/Windows/Fonts/georgia.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
     ]
     for path in candidates:
         try:

@@ -55,9 +55,10 @@ python -m ereader --target simulator
 
 The app starts a local upload server by default. On the reader, press `U` or
 click `Upload` in the library to see the address. From another phone, tablet,
-or computer on the same Wi-Fi network, open that address in a browser and
-upload a `.txt` or `.epub` file. Uploaded books are stored in `books/` and
-appear in the library automatically.
+or computer on the same Wi-Fi network, open that address in a browser to use
+the library manager. You can upload `.txt` or `.epub` files, edit uploaded book
+titles and author names, and save those changes back to the Pi. Uploaded books
+are stored in `books/`, with editable metadata in `books/library.json`.
 
 Upload options:
 

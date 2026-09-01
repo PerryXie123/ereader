@@ -26,7 +26,10 @@ def main() -> None:
         upload_server = UploadServer(
             upload_dir,
             args.upload_port,
-            lambda book: (ui.add_book(book), upload_changed.set()),
+            lambda uploaded_books: (
+                ui.set_books([*SAMPLE_BOOKS, *uploaded_books], "Library updated"),
+                upload_changed.set(),
+            ),
         )
         upload_server.start()
         ui.upload_url = upload_server.url
